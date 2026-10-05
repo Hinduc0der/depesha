@@ -1,0 +1,28 @@
+*.user
+moc
+bld.inf
+*.loc
+*.rss
+*.sis
+*.mmp
+*.pkg
+Makefile
+*.cache
+*.mk
+ABLD.BAT
+*test
+rcc/qrc_resources.cpp
+*.pro.user.*
+*.autosave
+debian
+obj
+build-stamp
+configure-stamp
+Kutegram
+*.deb
+*.changes
+
+# Ключи Telegram API: свои у каждого, выпускаются на my.telegram.org.
+# Шаблон -- libkg/apisecrets.h.empty. Публиковать их нельзя: по правилам
+# Telegram ключ привязан к выпустившему, и за чужое использование отвечает он.
+libkg/apisecrets.h

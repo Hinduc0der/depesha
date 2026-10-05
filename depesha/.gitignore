@@ -1,0 +1,32 @@
+# Свой медиа-сервер: адрес и токен у каждого свои, в репозитории им не место.
+# Образец -- testdefaults.h.example.
+src/testdefaults.h
+
+# Ключи Telegram API лежат в ../kutegram/quick/libkg/apisecrets.h и закрыты
+# тамошним .gitignore -- см. СБОРКА.md.
+
+# Готовые пакеты: собираются из исходников, в истории не нужны.
+*.sis
+*.sisx
+
+# Рабочие деревья сборки (build-symbian.bat зеркалит в C:\dpbuild,
+# build-desktop.bat -- в C:\dpwin), следы qmake и abld.
+Makefile*
+*.o
+*.obj
+debug/
+release/
+build.log
+*_template.pkg
+*_installer.pkg
+*_stub.pkg
+*.mmp
+bld.inf
+*.mif
+
+# Снимки экрана и видео с телефона, журнал приложения.
+*.jpg
+*.jpeg
+*.png
+*.mp4
+kutegram.log

@@ -1,0 +1,26 @@
+# Ключи Telegram API и адрес медиа-сервера: свои у каждого, см. СБОРКА.md.
+kutegram/quick/libkg/apisecrets.h
+depesha/src/testdefaults.h
+
+# Готовые пакеты и следы сборки.
+*.sis
+*.sisx
+Makefile*
+*.o
+*.obj
+debug/
+release/
+build.log
+bld.inf
+*.mmp
+*.pkg
+*.rss
+*.loc
+*.cache
+ABLD.BAT
+
+# Снимки с телефона и журнал приложения.
+*.jpg
+*.jpeg
+*.mp4
+kutegram.log

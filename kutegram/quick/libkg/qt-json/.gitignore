@@ -1,0 +1,10 @@
+*.pro.user
+object_script.*.Debug
+object_script.*.Release
+debug
+Makefile.Release
+Makefile
+Makefile.Debug
+release
+*.o
+example/example
