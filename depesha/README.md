@@ -1,95 +1,106 @@
-# Депеша
+# Depesha
 
-Клиент Telegram для телефонов на Symbian S60v3 — тех, что вышли примерно в
-2007 году. Собран на обычных виджетах Qt 4.7, без QML.
+**English** · [Русский](README.ru.md)
 
-Делался для **Nokia E90**: 332 МГц, 56 МБ свободной памяти, два экрана
-(240×320 снаружи и 800×352 под крышкой), управление джойстиком и клавиатурой.
+A Telegram client for Symbian S60v3 phones — the ones released around 2007.
+Built on plain Qt 4.7 widgets, no QML.
 
-![иконка](depesha.svg)
+Made for the **Nokia E90**: 332 MHz, 56 MB of free memory, two screens
+(240×320 on the outside, 800×352 under the lid), a joystick and a keyboard.
 
-## Чем отличается от Kutegram
+![icon](depesha.svg)
 
-Депеша выросла из [Kutegram](https://github.com/Kutegram/Kutegram) и использует
-его библиотеку протокола (`libkg`) и модели данных — файл в файл. Переписан
-только интерфейс.
+## How it differs from Kutegram
 
-Причина простая: QML 1 на 332 МГц рисует каждую строку списка как дерево из
-полутора десятков элементов со своими привязками, и на этом телефоне оно не
-листается. В Депеше строка списка — одна отрисовка текста поверх заливки, а
-движок QML не загружается вовсе.
+Depesha grew out of [Kutegram](https://github.com/Kutegram/Kutegram) and uses
+its protocol library (`libkg`) and data models file for file. Only the
+interface was rewritten.
 
-Что из этого вышло, кроме скорости:
+The reason is simple: on a 332 MHz phone, QML 1 draws every list row as a tree
+of a dozen or more elements with their own bindings, and the result does not
+scroll. In Depesha a list row is one text draw over a fill, and the QML engine
+is never loaded at all.
 
-- **список чатов не выкачивается целиком** при входе, аватарки качаются только
-  для видимых строк — раньше телефон после запуска был занят минуты;
-- **фотографии** показываются сразу размытым превью, которое приходит вместе с
-  сообщением, и догружаются в разумном размере, а не самом большом;
-- **тяжёлое не качается само**: у голосовых, кружков, гифок и видео в списке
-  стоит метка `[voice]`, `[gif]`, `[video]`, и работа начинается только по
-  нажатию.
+What came out of that, besides speed:
 
-## Что умеет
+- **the chat list is not fetched in full** at sign-in, and avatars are
+  downloaded only for visible rows — before that the phone was busy for
+  minutes after startup;
+- **photos** show immediately as the blurred preview that arrives with the
+  message, then load at a sensible size rather than the largest one;
+- **heavy things are not downloaded on their own**: voice messages, video
+  notes, GIFs and video are marked `[voice]`, `[gif]`, `[video]` in the list,
+  and nothing happens until you press.
 
-Текст, фотографии, обычные стикеры, папки Telegram, ответ на сообщение,
-отправка без звука и отложенная отправка, отметка о прочтении, просмотр
-картинки во весь экран, загрузка и открытие файлов.
+## What it can do
 
-Голосовые, кружки, видеостикеры и гифки — через свой медиа-сервер, см. ниже.
+Text, photos, ordinary stickers, Telegram folders, replying to a message,
+sending silently and scheduled sending, read receipts, viewing a picture
+full-screen, downloading and opening files.
 
-## Медиа-сервер (не обязателен)
+Voice messages, video notes, video stickers and GIFs go through your own media
+server — see below.
 
-Телефон 2007 года не декодирует Opus (голосовые), VP9 (видеостикеры) и Lottie
-(анимированные стикеры) — и не научится: библиотек под S60v3 для них нет, а
-программный декодер на 332 МГц не потянет реальное время.
+## Media server (optional)
 
-Поэтому конвертация вынесена на сервер: он принимает файл и отдаёт то, что
-телефон умеет — mp3, GIF или 3GP. Сервер — ваш собственный; через него идут
-ваши голосовые, и чужому адресу их отдавать не стоит.
+A phone from 2007 does not decode Opus (voice messages), VP9 (video stickers)
+or Lottie (animated stickers), and it never will: there are no libraries for
+them on S60v3, and a software decoder at 332 MHz would not keep up with real
+time.
 
-**Без сервера** приложение работает полностью, кроме этих типов: текст,
-фотографии и обычные стикеры показываются как обычно, а у голосовых, гифок и
-видео в списке стоит `no media server, press to save` — файл можно скачать и
-забрать на компьютер.
+So the conversion lives on a server: it takes a file and returns something the
+phone can handle — mp3, GIF or 3GP. The server is **your own**: your voice
+messages go through it, and you should not hand them to somebody else's
+address.
 
-Адрес и токен вводятся на телефоне: левая софт-клавиша → **Settings** → Media
-server. Чтобы не набирать их при каждой переустановке, скопируйте
-`testdefaults.h.example` в `src/testdefaults.h` и впишите свои — сборка
-подставит их при первом запуске. Этот файл намеренно не в репозитории.
+**Without a server** the application works fully apart from those types: text,
+photos and ordinary stickers behave as usual, while voice messages, GIFs and
+video are marked `no media server, press to save` in the list — the file can
+be downloaded and picked up on a computer.
 
-Серверная часть — в `../kutegram/vps-media-convert.py` и `deploy-vps.sh`.
+The address and token are entered on the phone: left soft key → **Settings** →
+Media server. To avoid typing them after every reinstall, copy
+`testdefaults.h.example` to `src/testdefaults.h` and fill in your own — the
+build will use them on first run. That file is deliberately not in the
+repository.
 
-## Управление
+The server side is in `../kutegram/vps-media-convert.py` and `deploy-vps.sh`.
 
-Описано отдельно: [УПРАВЛЕНИЕ.md](УПРАВЛЕНИЕ.md) — какие клавиши даёт телефон,
-во что их превращает Qt, и что делает каждая на каждом экране. Коротко:
+## Controls
 
-| Клавиша | Что делает |
+Documented separately: [CONTROLS.md](CONTROLS.md) — which keys the phone
+offers, what Qt turns them into, and what each one does on each screen. In
+short:
+
+| Key | What it does |
 |---|---|
-| джойстик | ходит по списку; **центр** — открыть чат, сделать с сообщением то, что ему положено, в поле ввода — отправить |
-| любая буква в переписке | переносит фокус и саму букву в поле ввода |
-| левая софт-клавиша | меню: папки, отправка, настройки |
-| правая софт-клавиша | назад |
+| joystick | moves through the list; **centre** opens a chat, does whatever the selected message calls for, and in the input field sends |
+| any letter, in a conversation | moves both the focus and the letter itself into the input field |
+| left soft key | menu: folders, sending, settings |
+| right soft key | back |
 
-## Сборка
+## Building
 
-Пошагово, с установкой SDK и ключей: **[СБОРКА.md](СБОРКА.md)**.
+Step by step, including installing the SDK and getting keys:
+**[BUILDING.md](BUILDING.md)**.
 
-Коротко: нужен **Nokia Qt SDK 1.1** (Qt 4.7.3 для Symbian, GCCE, abld), свои
-ключи Telegram API в `../kutegram/quick/libkg/apisecrets.h` и `build-symbian.bat`.
-Каталоги `kutegram/quick` и `depesha` должны лежать рядом.
+In short: you need **Nokia Qt SDK 1.1** (Qt 4.7.3 for Symbian, GCCE, abld),
+your own Telegram API keys in `../kutegram/quick/libkg/apisecrets.h`, and
+`build-symbian.bat`. The `kutegram/quick` and `depesha` directories must sit
+side by side.
 
-**Готовых пакетов нет намеренно.** В любой собранный `.sis` впечатаны ключи
-Telegram API, а они привязаны к тому, кто их выпустил, и отвечает за чужое
-использование тоже он. Свои выпускаются на my.telegram.org за две минуты.
+**There are no ready-made packages, on purpose.** Every built `.sis` has
+Telegram API keys baked into it, and a key belongs to whoever issued it — who
+also answers for anyone else's use of it. Issuing your own at my.telegram.org
+takes two minutes.
 
-## Авторство
+## Credits
 
-Код написан **Claude** (Claude Code от Anthropic); владелец репозитория ставил
-задачи и проверял каждую сборку на живой Nokia E90 — без этой проверки
-половина решений здесь была бы неверной.
+The code was written by **Claude** (Anthropic's Claude Code); the repository
+owner set the tasks and tested every build on a live Nokia E90 — without that
+testing, half the decisions here would have been wrong.
 
-## Лицензия
+## License
 
-GPL-3.0 — как у Kutegram, из которого взяты библиотека протокола и модели.
-Текст лицензии в [COPYING](COPYING).
+GPL-3.0 — same as Kutegram, which the protocol library and the models come
+from. License text in [COPYING](COPYING).

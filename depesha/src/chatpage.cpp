@@ -69,7 +69,7 @@ ChatPage::ChatPage(MessagesModel *model, AppSettings *settings, QWidget *parent)
     // Центр джойстика -- это Key_Select, а не Enter, и однострочное поле ввода
     // на него не реагирует вовсе. Снаружи, с крышкой закрытой, Enter'а нет --
     // значит без этого фильтра набранное сообщение отправить было нечем.
-    // См. УПРАВЛЕНИЕ.md.
+    // См. CONTROLS.ru.md.
     _input->installEventFilter(this);
 
     connect(_input, SIGNAL(returnPressed()), this, SLOT(send()));

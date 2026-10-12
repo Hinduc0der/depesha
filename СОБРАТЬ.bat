@@ -24,7 +24,7 @@ if not exist "%SDK%\epoc32\tools\abld.pl" (
     echo   и ищется по этому имени в сети (например, на archive.org^).
     echo.
     echo   При установке: путь C:\QtSDK, отметить Symbian и Qt 4.7.3.
-    echo   Подробнее -- в depesha\СБОРКА.md, шаг 1.
+    echo   Подробнее -- в depesha\BUILDING.ru.md, шаг 1.
     echo.
     pause
     exit /b 1
@@ -127,7 +127,7 @@ echo.
 echo   Дальше -- на телефон: Средства ^> Дисп. прил. ^> Параметры ^> Настройки:
 echo     Установка ПО: Все
 echo     Проверка сертификатов в сети: Выкл.
-echo   и открыть .sis в файловом менеджере. Подробнее -- depesha\СБОРКА.md.
+echo   и открыть .sis в файловом менеджере. Подробнее -- depesha\BUILDING.ru.md.
 echo.
 pause
 exit /b 0

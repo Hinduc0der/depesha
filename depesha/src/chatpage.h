@@ -41,7 +41,7 @@ public:
 
 public slots:
     // Отправка и действие над сообщением нужны и меню на левой софт-клавише --
-    // см. УПРАВЛЕНИЕ.md.
+    // см. CONTROLS.ru.md.
     void send();
     void activate();
 
