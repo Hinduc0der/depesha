@@ -1,17 +1,19 @@
-// Образец для src/testdefaults.h -- файла, который в репозиторий не попадает.
+// Template for src/testdefaults.h, a file that is deliberately kept out of
+// the repository.
 //
-// Скопируйте его в src/testdefaults.h и впишите адрес и токен своего
-// медиа-сервера (см. README, раздел про медиа-сервер). Тогда сборка подставит
-// их при первом запуске, если поле в настройках пустое, и набирать адрес на
-// телефоне не придётся. Введённое на телефоне руками не затирается.
+// Copy it to src/testdefaults.h and fill in the address and token of your own
+// media server (see the README, the media server section). The build will then
+// use them on first run, if the field in Settings is empty, so you do not have
+// to type an address on the phone. Anything entered on the phone by hand is
+// never overwritten.
 //
-// Без этого файла приложение работает ровно так же, только адрес нужно
-// ввести в настройках самому -- или не вводить вовсе, см. README.
+// Without this file the application works exactly the same; you just enter the
+// address in Settings yourself — or not at all, see the README.
 
 #ifndef TESTDEFAULTS_H
 #define TESTDEFAULTS_H
 
 #define KG_TEST_MEDIA_URL "http://192.0.2.1:8089/kg-media"
-#define KG_TEST_MEDIA_TOKEN "вставьте-сюда-токен"
+#define KG_TEST_MEDIA_TOKEN "paste-your-token-here"
 
 #endif // TESTDEFAULTS_H
