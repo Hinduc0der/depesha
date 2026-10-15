@@ -49,6 +49,14 @@ Video notes, video stickers and GIFs still go through your own media server —
 see below. Without a server, animated and video stickers show the still
 preview picture instead of the animation.
 
+**Depesha has its own folder.** Settings, the session, the log and the cache
+live in `C:/Data/Depesha` (`E:/Data/Depesha` on the memory card), downloads in
+`Downloads/Depesha`. All of it used to be shared with Kutegram: one log file
+for both clients and a common cache each of them trimmed its own way. On the
+first run of this version the session and settings move themselves; files
+downloaded earlier stay where they are. The log is now
+`C:/Data/Depesha/depesha.log`.
+
 ## Media server (optional)
 
 A phone from 2007 does not decode VP9 (video stickers)
