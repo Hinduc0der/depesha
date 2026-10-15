@@ -8,6 +8,7 @@
 #include "twolinedelegate.h"
 
 #include <QAction>
+#include <QFile>
 #include <QApplication>
 #include <QDateTime>
 #include <QEvent>
@@ -22,6 +23,8 @@
 
 #include "cachemanager.h"
 #include "appsettings.h"
+#include "voicerecorder.h"
+#include "opusencode.h"
 #ifdef KG_TEST_MEDIA_SERVER
 #include "testdefaults.h"
 #endif
@@ -56,6 +59,11 @@ MainWindow::MainWindow(QWidget *parent) :
     _dialogs = new DialogsModel(this);
     _foldersModel = new FoldersModel(this);
     _messages = new MessagesModel(this);
+    _recorder = 0;      // заводится при первой попытке записать
+    _recordClock = 0;
+    _cancelled = false;
+    _encoder = 0;
+    _encodeClock = 0;
     _cache = new CacheManager(this);
     _settings = new AppSettings(this);
 
@@ -134,7 +142,7 @@ MainWindow::MainWindow(QWidget *parent) :
     _dialogsView->setEmptyText(tr("No chats"));
 
     _chat = new ChatPage(_messages, _settings, this);
-    _settingsPage = new SettingsPage(_settings, this);
+    _settingsPage = new SettingsPage(_settings, _cache, this);
     _imagePage = new ImagePage(this);
 
     _stack = new QStackedWidget(this);
@@ -228,6 +236,25 @@ MainWindow::MainWindow(QWidget *parent) :
     _openAction->setVisible(false);
     connect(_openAction, SIGNAL(triggered()), _chat, SLOT(activate()));
 
+    // Запись с микрофона. Пока это проба: записанное не отправляется, а
+    // проигрывается обратно -- сначала надо убедиться, что микрофон на этом
+    // телефоне вообще открывается и что приложение от этого не умирает.
+    // Во время записи софт-клавиши меняют смысл: левая останавливает, правая
+    // отменяет. Меню при этом не открывается вовсе -- одно нажатие одной
+    // физической клавиши, а не хождение по пунктам, каждое из которых слышно
+    // в самой записи. Добавляются к окну на время записи и снимаются после.
+    _stopRecordAction = new QAction(tr("Stop"), this);
+    _stopRecordAction->setSoftKeyRole(QAction::PositiveSoftKey);
+    connect(_stopRecordAction, SIGNAL(triggered()), this, SLOT(stopRecording()));
+
+    _cancelRecordAction = new QAction(tr("Cancel"), this);
+    _cancelRecordAction->setSoftKeyRole(QAction::NegativeSoftKey);
+    connect(_cancelRecordAction, SIGNAL(triggered()), this, SLOT(cancelRecording()));
+
+    _recordAction = menuBar()->addAction(tr("Record voice"));
+    _recordAction->setVisible(false);
+    connect(_recordAction, SIGNAL(triggered()), this, SLOT(recordVoice()));
+
     QAction *settingsAction = menuBar()->addAction(tr("Settings"));
     connect(settingsAction, SIGNAL(triggered()), this, SLOT(showSettings()));
 
@@ -237,6 +264,8 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(_chat, SIGNAL(status(QString)), this, SLOT(status(QString)));
     connect(_chat, SIGNAL(showImage(QString)), this, SLOT(showImage(QString)));
     connect(_chat, SIGNAL(replyStateChanged()), this, SLOT(updateChatActions()));
+    connect(_chat, SIGNAL(stopRecording()), this, SLOT(stopRecording()));
+    connect(_messages, SIGNAL(voiceSent()), this, SLOT(voiceSent()));
     connect(_settings, SIGNAL(markAsReadChanged()), this, SLOT(markAsReadChanged()));
 
     connect(_client, SIGNAL(initialized(bool)), this, SLOT(clientInitialized(bool)));
@@ -278,6 +307,9 @@ MainWindow::MainWindow(QWidget *parent) :
     // он занимал 22 секунды, в которые не обслуживается и сокет. Через двадцать
     // секунд после запуска это приходилось ровно на разговор с сервером.
     QTimer::singleShot(120000, _cache, SLOT(trim()));
+    // И подмести то место, где кэш лежал раньше: подрезка видит только
+    // текущую папку, а брошенное в памяти телефона само не исчезнет.
+    QTimer::singleShot(140000, _cache, SLOT(clearOtherPlace()));
 
     // Строка памяти раз в минуту. После падения "мало памяти" это
     // единственный способ увидеть, росла память ровно или скакнула на чём-то
@@ -572,6 +604,11 @@ void MainWindow::openDialog(const QModelIndex &index)
 
     _chat->setTitle(index.data(titleRole).toString());
 
+    // Читается при каждом открытии чата, а не один раз при запуске: адрес
+    // сервера можно сменить в настройках и вернуться в переписку. От него
+    // зависит, что будет на месте анимированного стикера -- GIF с сервера или
+    // готовая миниатюра.
+    _messages->setMediaServerOn(!_settings->activeMediaServerUrl().isEmpty());
 
     _messages->setPeer(peer);
 
@@ -691,6 +728,7 @@ void MainWindow::updateChatActions()
     _silentAction->setVisible(inChat && _canSend);
     _laterHourAction->setVisible(inChat && _canSend);
     _laterDayAction->setVisible(inChat && _canSend);
+    _recordAction->setVisible(inChat);
 }
 
 void MainWindow::replyToMessage()
@@ -781,4 +819,183 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     }
 
     QMainWindow::keyPressEvent(event);
+}
+
+// Проба записи с микрофона. Пока она ничего не отправляет: записанное сразу
+// проигрывается обратно. Сначала нужно узнать главное -- открывается ли
+// микрофон на этом телефоне и переживает ли это приложение.
+void MainWindow::recordVoice()
+{
+    if (!_recorder) {
+        _recorder = new KgVoiceRecorder(this);
+        connect(_recorder, SIGNAL(started()), this, SLOT(recordingStarted()));
+        connect(_recorder, SIGNAL(finished(QString,int,int)),
+                this, SLOT(recordingFinished(QString,int,int)));
+        connect(_recorder, SIGNAL(failed(QString)), this, SLOT(recordingFailed(QString)));
+    }
+
+    if (_recorder->isRecording()) {
+        _recorder->stop();
+        return;
+    }
+
+    // В кэш: запись -- файл одноразовый, и подрезка его когда-нибудь уберёт.
+    const QString path = CacheManager::convertedPath("zapis", ".wav");
+
+    status(tr("Opening the microphone..."));
+    _recorder->start(path);
+}
+
+void MainWindow::recordingStarted()
+{
+    // Режим записи: меню и «назад» убираются, вместо них две софт-клавиши.
+    removeAction(_backAction);
+    addAction(_stopRecordAction);
+    addAction(_cancelRecordAction);
+    menuBar()->setEnabled(false);
+
+    _chat->setRecording(true);
+
+    if (!_recordClock) {
+        _recordClock = new QTimer(this);
+        _recordClock->setInterval(1000);
+        connect(_recordClock, SIGNAL(timeout()), this, SLOT(recordingTick()));
+    }
+    _recordClock->start();
+
+    recordingTick();
+}
+
+void MainWindow::recordingTick()
+{
+    if (!_recorder) {
+        return;
+    }
+
+    const int sec = _recorder->seconds();
+    status(tr("Recording %1:%2 -- left key stops")
+           .arg(sec / 60).arg(sec % 60, 2, 10, QChar('0')));
+
+    // Страховка от забытой записи: полминуты звука -- это почти мегабайт, и
+    // оставленный включённым микрофон незаметно съест карту.
+    if (sec >= 300) {
+        kgLog("rec: five minutes, stopping on my own");
+        _recorder->stop();
+    }
+}
+
+void MainWindow::stopRecording()
+{
+    if (_recorder) {
+        _recorder->stop();
+    }
+}
+
+void MainWindow::cancelRecording()
+{
+    if (!_recorder) {
+        return;
+    }
+
+    _cancelled = true;
+    _recorder->stop();
+}
+
+// Возврат из режима записи: софт-клавиши и меню на место.
+void MainWindow::recordingOver()
+{
+    if (_recordClock) {
+        _recordClock->stop();
+    }
+
+    _chat->setRecording(false);
+
+    removeAction(_stopRecordAction);
+    removeAction(_cancelRecordAction);
+    addAction(_backAction);
+    menuBar()->setEnabled(true);
+}
+
+void MainWindow::recordingFinished(QString path, int seconds, int bytes)
+{
+    recordingOver();
+
+    if (_cancelled) {
+        _cancelled = false;
+        QFile::remove(path);
+        status(tr("Recording cancelled"));
+        return;
+    }
+
+    if (path.isEmpty() || bytes <= 0) {
+        status(tr("Nothing was recorded"));
+        return;
+    }
+
+    Q_UNUSED(seconds)
+    Q_UNUSED(bytes)
+
+    // Записанное сжимаем в Opus и отправляем. Сжатие дороже расшифровки, и
+    // идёт оно так же -- кусками по таймеру, чтобы телефон не замирал.
+    const QString ogg = CacheManager::convertedPath("zapis", ".ogg");
+
+    _encoder = new KgVoiceEncoder();
+    if (!_encoder->begin(path, ogg)) {
+        delete _encoder;
+        _encoder = 0;
+        status(tr("Cannot compress the recording"));
+        return;
+    }
+
+    _oggPath = ogg;
+
+    if (!_encodeClock) {
+        _encodeClock = new QTimer(this);
+        _encodeClock->setInterval(10);
+        connect(_encodeClock, SIGNAL(timeout()), this, SLOT(encodeTick()));
+    }
+    _encodeClock->start();
+
+    status(tr("Compressing..."));
+}
+
+void MainWindow::encodeTick()
+{
+    if (!_encoder) {
+        _encodeClock->stop();
+        return;
+    }
+
+    // Тот же кусок в 120 мс, что и у расшифровки.
+    if (_encoder->step(120)) {
+        status(tr("Compressing %1%").arg(_encoder->percent()));
+        return;
+    }
+
+    _encodeClock->stop();
+
+    const bool ok = _encoder->finish();
+    const int sec = _encoder->seconds();
+
+    delete _encoder;
+    _encoder = 0;
+
+    if (!ok) {
+        status(tr("Cannot compress the recording"));
+        return;
+    }
+
+    status(tr("Sending %1 s...").arg(sec));
+    _messages->sendVoice(_oggPath, sec);
+}
+
+void MainWindow::voiceSent()
+{
+    status(tr("Voice message sent"));
+}
+
+void MainWindow::recordingFailed(QString why)
+{
+    recordingOver();
+    status(tr("Recording failed: %1").arg(why));
 }

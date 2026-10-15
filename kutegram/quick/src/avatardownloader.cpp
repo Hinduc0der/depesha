@@ -6,6 +6,7 @@
 #include <QBrush>
 #include <QCoreApplication>
 
+#include "cachemanager.h"
 #include "kglog.h"
 
 AvatarDownloader::AvatarDownloader(QObject *parent)
@@ -63,9 +64,14 @@ void AvatarDownloader::setClient(QObject *client)
 
     if (!_client) return;
 
-    _client->sessionDirectory().mkdir("Kutegram_avatars");
-    _client->sessionDirectory().mkdir("Kutegram_photos");
-    _client->sessionDirectory().mkdir("Kutegram_stickers");
+    // Where these go is CacheManager's business, not the session's: the
+    // session must stay in phone memory to survive a card being pulled, while
+    // pictures belong wherever there is room. See CacheManager::baseDirectory.
+    // Приставка -- имя клиента (Kutegram_/Depesha_): папки у них теперь свои,
+    // и имя внутри снимает вопрос, чей это каталог.
+    CacheManager::baseDirectory().mkpath(TgClient::appFolder() + "_avatars");
+    CacheManager::baseDirectory().mkpath(TgClient::appFolder() + "_photos");
+    CacheManager::baseDirectory().mkpath(TgClient::appFolder() + "_stickers");
 
     connect(_client, SIGNAL(authorized(TgLongVariant)), this, SLOT(authorized(TgLongVariant)));
     connect(_client, SIGNAL(fileDownloaded(TgLongVariant,QString)), this, SLOT(fileDownloaded(TgLongVariant,QString)));
@@ -147,8 +153,8 @@ qint64 AvatarDownloader::downloadPhoto(TgObject photo)
 
     qint64 photoId = photo["id"].toLongLong();
 
-    QString relativePath = "Kutegram_photos/" + QString::number(photoId) + ".jpg";
-    QString avatarFilePath = _client->sessionDirectory().absoluteFilePath(relativePath);
+    QString relativePath = TgClient::appFolder() + "_photos/" + QString::number(photoId) + ".jpg";
+    QString avatarFilePath = CacheManager::baseDirectory().absoluteFilePath(relativePath);
 
     if (!QFile::exists(avatarFilePath + ".thumbnail.jpg")) {
         qint64 loadingId = _client->downloadFile(avatarFilePath, photo).toLongLong();
@@ -175,16 +181,27 @@ qint64 AvatarDownloader::downloadSticker(TgObject document)
 
     qint64 stickerId = document["id"].toLongLong();
 
-    QString relativePath = "Kutegram_stickers/" + QString::number(stickerId) + ".webp";
-    QString stickerFilePath = _client->sessionDirectory().absoluteFilePath(relativePath);
+    // Анимированный стикер сам по себе бесполезен -- ни Lottie, ни VP9 этот
+    // телефон не рисует. Модель в таком случае просит не стикер, а его
+    // миниатюру, и помечает это в самом документе (`_thumbType`). Лежит она
+    // под другим именем: вдруг когда-нибудь появится и настоящий файл.
+    const QString thumbType = document["_thumbType"].toString();
+
+    QString relativePath = TgClient::appFolder() + "_stickers/" + QString::number(stickerId)
+            + (thumbType.isEmpty() ? QString(".webp") : QString("_t.webp"));
+    QString stickerFilePath = CacheManager::baseDirectory().absoluteFilePath(relativePath);
 
     // Вся цепочка стикера пишется в журнал: он теряется где-то между запросом
     // и картинкой на экране, и с этой стороны шага не видно.
     if (!QFile::exists(stickerFilePath)) {
-        qint64 loadingId = _client->downloadFile(stickerFilePath, document).toLongLong();
+        qint64 loadingId = thumbType.isEmpty()
+                ? _client->downloadFile(stickerFilePath, document).toLongLong()
+                : _client->downloadDocumentThumb(stickerFilePath, document, thumbType,
+                                                 document["_thumbSize"]).toLongLong();
         _requestsStickers[loadingId] = stickerId;
-        kgLog("sticker " + QString::number(stickerId) + ": requested, file id "
-              + QString::number(loadingId), false);
+        kgLog("sticker " + QString::number(stickerId) + ": requested"
+              + (thumbType.isEmpty() ? QString() : " thumb " + thumbType)
+              + ", file id " + QString::number(loadingId), false);
     } else {
         kgLog("sticker " + QString::number(stickerId) + ": already on disk", false);
         emit stickerDownloaded(stickerId, stickerFilePath);
@@ -209,8 +226,8 @@ qint64 AvatarDownloader::downloadAvatar(TgObject peer)
 
     qint64 photoId = photo["photo_id"].toLongLong();
 
-    QString relativePath = "Kutegram_avatars/" + QString::number(photoId) + ".jpg";
-    QString avatarFilePath = _client->sessionDirectory().absoluteFilePath(relativePath);
+    QString relativePath = TgClient::appFolder() + "_avatars/" + QString::number(photoId) + ".jpg";
+    QString avatarFilePath = CacheManager::baseDirectory().absoluteFilePath(relativePath);
 
     // Whether it is here is a question about the file, not about a list that
     // remembers everything ever downloaded. The list could not survive the

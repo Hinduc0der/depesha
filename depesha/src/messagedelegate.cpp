@@ -103,12 +103,16 @@ QPixmap MessageDelegate::picture(const QModelIndex &index, int maxSide) const
         return result;
     }
 
+    QImage image;
+
     if (sticker) {
-        const QImage image = kgDecodeWebp(path, maxSide);
-        if (!image.isNull()) {
-            result = QPixmap::fromImage(image);
-        }
-    } else {
+        image = kgDecodeWebp(path, maxSide);
+    }
+
+    // Не WebP -- значит обычная картинка, и читает её сам Qt. Сюда попадает
+    // не только фотография: миниатюра анимированного стикера приходит и
+    // JPEG'ом, по тому, что отдал Telegram.
+    if (image.isNull()) {
         // Разворачивать фотографию целиком, чтобы потом ужать до девяноста
         // шести точек, -- это мегабайты и секунды на каждую строку при
         // прокрутке. QImageReader умеет отдать сразу уменьшенное: для JPEG это
@@ -122,10 +126,11 @@ QPixmap MessageDelegate::picture(const QModelIndex &index, int maxSide) const
             reader.setScaledSize(scaled);
         }
 
-        const QImage image = reader.read();
-        if (!image.isNull()) {
-            result = QPixmap::fromImage(image);
-        }
+        image = reader.read();
+    }
+
+    if (!image.isNull()) {
+        result = QPixmap::fromImage(image);
     }
 
     if (!result.isNull()) {
@@ -253,13 +258,16 @@ QString MessageDelegate::mediaTag(const QModelIndex &index) const
     const QString file = _mediaFilePathRole >= 0
             ? index.data(_mediaFilePathRole).toString() : QString();
 
-    // Голосовое (Opus), кружок, видеостикер, гифка и видео этот телефон не
-    // декодирует вовсе -- их переводит медиа-сервер. Без него обещать
-    // «нажмите, чтобы проиграть» нельзя: единственное, что здесь можно
-    // сделать, -- сохранить файл и забрать его на компьютер.
+    // Кружок, видеостикер, гифку и видео этот телефон не декодирует вовсе --
+    // их переводит медиа-сервер. Без него обещать «нажмите, чтобы проиграть»
+    // нельзя: единственное, что здесь можно сделать, -- сохранить файл и
+    // забрать его на компьютер.
+    //
+    // Голосовые -- исключение: Opus раскодирует сам телефон (см. opusvoice.h),
+    // и сервер для них больше не нужен.
     const bool hasServer = _settings && !_settings->activeMediaServerUrl().isEmpty();
 
-    if (!hasServer) {
+    if (!hasServer && kind != VoiceMedia) {
         return tag + " " + (file.isEmpty() ? QObject::tr("no media server, press to save")
                                            : QObject::tr("saved to phone"));
     }

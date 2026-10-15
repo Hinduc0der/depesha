@@ -40,6 +40,13 @@ public:
     QListView *view() const;
 
 public slots:
+    // Проиграть готовый файл -- тем же проигрывателем, что и голосовые.
+    // Нужен пробе записи: записанное сразу слушается.
+    void playSound(QString path);
+    // Пока идёт запись, страница глотает клавиши: центр останавливает, а
+    // остальное не должно ни печататься, ни щёлкать.
+    void setRecording(bool recording);
+
     // Отправка и действие над сообщением нужны и меню на левой софт-клавише --
     // см. CONTROLS.ru.md.
     void send();
@@ -55,6 +62,9 @@ public slots:
     void sendLater(int secondsFromNow);
 
 signals:
+    // Центр джойстика во время записи.
+    void stopRecording();
+
     // Строка состояния живёт в главном окне, а рассказать есть что и отсюда.
     void status(QString text);
     // Есть ли что отправлять: от этого зависит пункт меню «Send».
@@ -99,6 +109,7 @@ private:
     int _animationRow;
     int _noteRow;
     bool _messagesCanLoad;
+    bool _recording;
     QString _peerTitle;
     QString _replyTo;
 };

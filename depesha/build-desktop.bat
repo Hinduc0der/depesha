@@ -23,6 +23,10 @@ if errorlevel 8 exit /b 1
 robocopy "%DP_ROOT%\depesha" "%DP_WORK%\depesha" /MIR /NFL /NDL /NJH /NJS /NP /XD .git >nul
 if errorlevel 8 exit /b 1
 
+REM Версия -- макрос, а make про макросы не знает: без этого окно
+REM называется старой версией, хотя собрано новое.
+copy /b "%DP_WORK%\depesha\src\main.cpp"+,, "%DP_WORK%\depesha\src\main.cpp" >nul
+
 cd /d "%DP_WORK%\depesha"
 if errorlevel 1 exit /b 1
 

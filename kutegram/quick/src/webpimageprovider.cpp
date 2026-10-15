@@ -1,7 +1,9 @@
 #include "webpimageprovider.h"
 
+#include <QBuffer>
 #include <QFile>
 #include <QImage>
+#include <QImageReader>
 #include <QUrl>
 
 #include "kglog.h"
@@ -54,7 +56,30 @@ QImage WebpImageProvider::requestImage(const QString &id, QSize *size, const QSi
     int height = 0;
     if (!WebPGetInfo((const quint8*) data.constData(), data.size(), &width, &height)
             || width <= 0 || height <= 0) {
-        return QImage();
+        // Не WebP. Сюда попадает миниатюра анимированного стикера: без
+        // медиа-сервера вместо анимации показывается она, а приходит она
+        // такой, какой её отдал Telegram, -- бывает и JPEG. Читает его сам
+        // Qt, уже уменьшенным.
+        QBuffer buffer(&data);
+        buffer.open(QIODevice::ReadOnly);
+        QImageReader reader(&buffer);
+
+        const QSize full = reader.size();
+        const int side = requestedSize.width() > 0 || requestedSize.height() > 0
+                ? qMin(KG_WEBP_MAX_SIDE, qMax(requestedSize.width(), requestedSize.height()))
+                : KG_WEBP_MAX_SIDE;
+
+        if (full.isValid() && (full.width() > side || full.height() > side)) {
+            QSize scaled = full;
+            scaled.scale(side, side, Qt::KeepAspectRatio);
+            reader.setScaledSize(scaled);
+        }
+
+        const QImage plain = reader.read();
+        if (!plain.isNull() && size) {
+            *size = plain.size();
+        }
+        return plain;
     }
 
     int maxSide = KG_WEBP_MAX_SIDE;

@@ -47,6 +47,21 @@ TgFileCtx::TgFileCtx(TgObject input, QString fileName, TgLong fileSize)
     download = input;
 }
 
+TgLongVariant TgClient::downloadDocumentThumb(QString filePath, TgObject document, QString thumbType, TgLongVariant thumbSize)
+{
+    if (GETID(document) != TLType::Document || thumbType.isEmpty()) {
+        return 0;
+    }
+
+    TGOBJECT(TLType::InputDocumentFileLocation, loc);
+    loc["id"] = document["id"];
+    loc["access_hash"] = document["access_hash"];
+    loc["file_reference"] = document["file_reference"];
+    loc["thumb_size"] = thumbType;
+
+    return downloadFile(filePath, loc, thumbSize, document["dc_id"].toInt(), 0);
+}
+
 TgLongVariant TgClient::downloadFile(QString filePath, TgObject inputFile, TgLongVariant fileSize, qint32 dcId, TgLongVariant fileId)
 {
     //TODO: file references

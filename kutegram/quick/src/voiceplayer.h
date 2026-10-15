@@ -12,20 +12,29 @@ namespace Phonon
 }
 
 class QNetworkReply;
+class QTimer;
 class AppSettings;
+class KgVoiceDecoder;
 
 // Plays Telegram voice messages, which arrive as Opus in an Ogg container --
-// a codec from 2012, on a phone whose newest codec is older than that. There
-// is no Opus decoder in S60v3 and there is no way to add one cheaply.
+// a codec from 2012, on a phone whose newest codec is older than that. S60v3
+// has no Opus decoder of its own.
 //
-// The way around it is the way the WhatsApp client on this same phone already
-// works: something else does the decoding. The .oga goes to a small service
-// (vps-voice-transcode.py) that hands back an mp3, and the phone plays that
-// with its own hardware codec through Phonon.
+// Сначала пробуем раскодировать САМИ: в проект собран целочисленный декодер
+// libopus (см. opusvoice.h), и телефону достаётся обычный WAV, который Phonon
+// играет без чужой помощи. Это главное: без сервера-прокладки человек раньше
+// не мог слушать голосовые вообще, а поднимать VPS ради них готов не каждый.
 //
-// The address lives in the settings file under VoiceTranscoder, so it can be
-// pointed somewhere else without rebuilding. Voice messages are private, so it
-// should only ever point at a server the user owns.
+// Считается это не мгновенно -- на аппарате примерно вчетверо быстрее
+// реального времени, то есть минутное голосовое это секунд четырнадцать.
+// Поэтому работа идёт кусками по таймеру, между ними телефон живёт обычной
+// жизнью. Отдельный поток был бы уместнее, но QThread на этом телефоне не
+// стартует вовсе (проверено сборкой 0.4.3).
+//
+// Если своими силами не вышло, остаётся прежний путь: отдать .oga небольшой
+// службе (kg-media), получить mp3/amr и играть его. Адрес службы живёт в
+// настройках, так что его можно сменить без пересборки; голосовые -- дело
+// частное, и указывать там стоит только свой сервер.
 class VoicePlayer : public QObject
 {
     Q_OBJECT
@@ -36,6 +45,7 @@ public:
     // The settings own the address: it can change while the client runs, and
     // an empty one means voice messages simply cannot be played here.
     explicit VoicePlayer(AppSettings *settings, QObject *parent = 0);
+    ~VoicePlayer();
 
     QString status() const;
 
@@ -49,15 +59,23 @@ signals:
     void statusChanged();
 
 private slots:
+    void decodeTick();
     void transcodeFinished();
     void mediaStateChanged();
 
 private:
     void playFile(QString path);
-    void setStatus(QString status);
+    // Один и тот же разбор итога -- и когда получилось, и когда нет.
+    void decodeDone(bool ok, int ms, QString wav);
+    void askServer(QString path);
+    void setStatus(QString status, bool writeToLog = true);
 
     QNetworkAccessManager _network;
     QNetworkReply *_reply;
+    KgVoiceDecoder *_decoder;
+    QTimer *_tick;
+    QString _wavPath;
+    int _shownPercent;
     QString _pendingPath;
     QString _status;
     AppSettings *_settings;

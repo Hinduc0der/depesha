@@ -150,6 +150,10 @@ int main(int argc, char *argv[])
     // 14.6 seconds of phone flash, all of it before the window appeared. It
     // waits until the client is up and the user is reading something.
     QTimer::singleShot(20000, cacheManager, SLOT(trim()));
+    // И подмести то место, где кэш лежал раньше. Само оно не исчезнет:
+    // подрезка видит только текущую папку, а брошенные мегабайты в памяти
+    // телефона -- ровно то, из-за чего всё это и затевалось.
+    QTimer::singleShot(30000, cacheManager, SLOT(clearOtherPlace()));
 
     viewer.rootContext()->setContextProperty("cacheManager", cacheManager);
     viewer.rootContext()->setContextProperty("fileBrowser", new FileBrowser(&viewer));

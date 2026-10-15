@@ -33,10 +33,15 @@ void ImagePage::rescale()
     // Стикер -- WebP, его Qt не читает; остальное читает сама, и сразу в
     // нужном размере: разворачивать мегапиксель ради экрана 240 точек не надо
     // ни здесь, ни в списке.
+    // Миниатюра анимированного стикера лежит под тем же расширением, а
+    // приходит такой, какой её отдал Telegram, -- бывает и JPEG. Поэтому если
+    // WebP не разобрался, читаем обычным путём, а не показываем пустоту.
     if (_path.endsWith(".webp")) {
         const QImage image = kgDecodeWebp(_path, qMax(width(), height()));
-        _scaled = image.isNull() ? QPixmap() : QPixmap::fromImage(image);
-        return;
+        if (!image.isNull()) {
+            _scaled = QPixmap::fromImage(image);
+            return;
+        }
     }
 
     QImageReader reader(_path);

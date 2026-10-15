@@ -71,7 +71,20 @@ public slots:
     // Absolute path of the .ini a named session lives in. Everything that
     // persists anything has to go through this -- see the comment in the
     // implementation for why it is not QSettings' own default on Symbian.
+    // Имя папки этого клиента: «Kutegram» или «Depesha». Оба стоят на одном
+    // телефоне, и раньше у них была одна папка на двоих -- один журнал, один
+    // кэш, и чистка одного уносила файлы другого. Теперь всё, что пишет
+    // клиент, лежит под своим именем, и это имя спрашивают здесь.
+    static QString appFolder();
+
     static QString settingsFilePath(QString name);
+
+    // Переезд из общей папки в свою: забирает оставшиеся там .ini этого
+    // клиента и возвращает, сколько файлов перевёз. Звать один раз при
+    // запуске, ДО создания TgClient -- иначе сессия не найдётся и телефон
+    // попросит войти заново. Для Kutegram это пустая работа: его папка и есть
+    // прежняя общая.
+    static int migrateSettingsFolder();
     QString sessionName();
     void resetSession();
     void migrateTo(TgObject config, qint32 dcId);
@@ -95,6 +108,14 @@ public slots:
 
     void cancelDownload(TgLongVariant fileId);
     TgLongVariant downloadFile(QString filePath, TgObject inputFile, TgLongVariant fileSize = 0, TgInt dcId = 0, TgLongVariant fileId = 0);
+
+    // Миниатюра документа, а не сам документ. Нужна анимированным стикерам:
+    // их самих этот телефон нарисовать не может, а миниатюра -- обычная
+    // картинка в десяток килобайт, и её Telegram отдаёт всегда.
+    //
+    // thumbType -- это поле type у выбранного размера из document.thumbs;
+    // пустой тип означал бы «весь файл», поэтому на пустом возвращается 0.
+    TgLongVariant downloadDocumentThumb(QString filePath, TgObject document, QString thumbType, TgLongVariant thumbSize = 0);
     TgLongVariant downloadNextFilePart();
     TgLongVariant migrateFileTo(TgLongVariant messageId, TgInt dcId);
     void fileProbablyDownloaded(TgLongVariant messageId);

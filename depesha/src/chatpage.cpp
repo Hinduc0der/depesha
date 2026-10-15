@@ -26,7 +26,8 @@ ChatPage::ChatPage(MessagesModel *model, AppSettings *settings, QWidget *parent)
     _movie(0),
     _animationRow(-1),
     _noteRow(-1),
-    _messagesCanLoad(true)
+    _messagesCanLoad(true),
+    _recording(false)
 {
     _title = new QLabel(this);
     _title->setTextFormat(Qt::PlainText);
@@ -235,6 +236,19 @@ void ChatPage::focusMessages()
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
 {
+    // Пока идёт запись, клавиатура занята одним делом: остановить. Остальные
+    // клавиши глотаются -- иначе буквы сыплются в строку ввода, а каждый
+    // лишний щелчок слышен в записи.
+    if (_recording && event->type() == QEvent::KeyPress) {
+        const int key = static_cast<QKeyEvent*>(event)->key();
+
+        if (key == Qt::Key_Select || key == Qt::Key_Enter || key == Qt::Key_Return) {
+            emit stopRecording();
+        }
+
+        return true;
+    }
+
     if (watched == _input && event->type() == QEvent::KeyPress) {
         const int key = static_cast<QKeyEvent*>(event)->key();
 
@@ -364,11 +378,14 @@ void ChatPage::activate()
         return;
     }
 
-    // Без медиа-сервера ни голосовое, ни кружок, ни гифка на этом телефоне не
-    // проигрываются: ни Opus, ни VP9 он не декодирует. Файл уже скачан --
-    // значит всё, что можно, уже сделано, и честнее сказать это, чем молча
-    // ничего не сделать.
+    // Без медиа-сервера кружок и гифка на этом телефоне не проигрываются: VP9
+    // он не декодирует. Файл уже скачан -- значит всё, что можно, уже сделано,
+    // и честнее сказать это, чем молча ничего не сделать.
+    //
+    // Голосовые сюда больше не попадают: Opus раскодирует сам телефон
+    // (см. opusvoice.h), сервер им нужен только как запасной путь.
     if (kind != MessageDelegate::NoMedia
+            && kind != MessageDelegate::VoiceMedia
             && _settings->activeMediaServerUrl().isEmpty()) {
         if (kind == MessageDelegate::VideoMedia) {
             // У видео есть шанс: снятое старым телефоном 3GP штатный плеер
@@ -383,8 +400,8 @@ void ChatPage::activate()
 
     switch (kind) {
     case MessageDelegate::VoiceMedia:
-        // Opus, декодера которому на этом телефоне нет: файл уходит на сервер,
-        // играется то, что вернулось.
+        // Opus. Проигрыватель сначала раскодирует его своими силами в WAV и
+        // только если не получится, отдаёт на сервер -- см. voiceplayer.cpp.
         _player->play(path);
         return;
 
@@ -529,4 +546,14 @@ void ChatPage::animationFrame()
     }
 
     _view->viewport()->update(_view->visualRect(_model->index(_animationRow, 0)));
+}
+
+void ChatPage::playSound(QString path)
+{
+    _player->play(path);
+}
+
+void ChatPage::setRecording(bool recording)
+{
+    _recording = recording;
 }

@@ -1,8 +1,10 @@
 #include <QApplication>
 #include <QPixmapCache>
 
+#include "apisecrets.h"
 #include "kglog.h"
 #include "mainwindow.h"
+#include "tgclient.h"
 
 // VERSION приходит из .pro: на symbian-abld без кавычек, поэтому строится
 // здесь -- как и в Kutegram.
@@ -32,7 +34,25 @@ int main(int argc, char *argv[])
     // фотографиями. Мегабайта хватает примерно на два экрана.
     QPixmapCache::setCacheLimit(1024);
 
+    // ДО первой записи в журнал и до любого обращения к настройкам: Депеша
+    // переезжает из общей с Kutegram папки C:/Data/Kutegram в свою
+    // C:/Data/Depesha, и сессия должна уехать вместе с ней -- иначе телефон
+    // попросит войти заново по SMS.
+    const int perevezeno = TgClient::migrateSettingsFolder();
+
     kgLog("Depesha " + QApplication::applicationVersion() + " starting");
+
+    if (perevezeno > 0) {
+        kgLog("moved " + QString::number(perevezeno) + " settings files into my own folder");
+    }
+
+    // Какая пара ключей приложения попала в сборку. Телеграм отвечает
+    // API_ID_INVALID и на чужой api_id, и на несовпадающий с ним api_hash, а
+    // снаружи эти случаи неразличимы -- в журнале хотя бы видно, что именно
+    // вкомпилировано. Сам hash секрет и в журнал не идёт: его длины довольно,
+    // чтобы заметить обрезку или пустое место.
+    kgLog("api_id=" + QString::number(KUTEGRAM_API_ID)
+          + " hash=" + QString::number(QString(KUTEGRAM_API_HASH).length()) + " chars");
 
     MainWindow window;
 

@@ -1060,6 +1060,12 @@ void TgTransport::handleRpcError(QByteArray data, qint64 messageId)
     }
 
     if (errorCode == 401) {
+        // Сессию стирал молча, и в журнале оставалась дыра: вход был, а через
+        // минуту его нет, и почему -- не написано (так и вышло 15.10.2026,
+        // когда Telegram отозвал ключ приложения). Сначала рассказываем, потом
+        // стираем: причина -- в сообщении сервера.
+        pendingMessages.remove(messageId);
+        _client->handleRpcError(errorCode, errorMessage, messageId);
         resetSession();
         return;
     }

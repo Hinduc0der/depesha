@@ -38,12 +38,20 @@ Text, photos, ordinary stickers, Telegram folders, replying to a message,
 sending silently and scheduled sending, read receipts, viewing a picture
 full-screen, downloading and opening files.
 
-Voice messages, video notes, video stickers and GIFs go through your own media
-server — see below.
+**Voice messages — both ways, on the phone itself.** Incoming ones are decoded
+by the phone: a fixed-point Opus decoder is built into the project. To send
+one, pick **"Record voice"** from the menu in a conversation; while recording,
+the left soft key stops, the right one cancels, and the joystick centre stops
+as well. What you record is compressed to Opus and sent as an ordinary voice
+message. No media server is needed for voice any more.
+
+Video notes, video stickers and GIFs still go through your own media server —
+see below. Without a server, animated and video stickers show the still
+preview picture instead of the animation.
 
 ## Media server (optional)
 
-A phone from 2007 does not decode Opus (voice messages), VP9 (video stickers)
+A phone from 2007 does not decode VP9 (video stickers)
 or Lottie (animated stickers), and it never will: there are no libraries for
 them on S60v3, and a software decoder at 332 MHz would not keep up with real
 time.

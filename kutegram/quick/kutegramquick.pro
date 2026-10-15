@@ -1,6 +1,6 @@
 TARGET = Kutegram
 APPNAME = Kutegram
-VERSION = 1.9.12
+VERSION = 1.9.14
 PKG_VERSION = $$replace(VERSION, "\.", ",")
 # symbian-abld: cpp.exe from the 2011 SDK chokes on escaped quotes inside
 # a MACRO line ("unterminated string or character constant"), so on Symbian
@@ -25,8 +25,13 @@ greaterThan(QT_MAJOR_VERSION, 4) {
     # Playing voice messages goes through Phonon, which Qt 5 dropped. Nothing
     # here builds against Qt 5 today; when something does, this needs its own
     # implementation rather than a broken one.
-    SOURCES += src/voiceplayer.cpp
-    HEADERS += src/voiceplayer.h
+    SOURCES += src/voiceplayer.cpp src/opusvoice.cpp
+    HEADERS += src/voiceplayer.h src/opusvoice.h
+
+    # Декодер Opus: голосовое Telegram -- это Opus в Ogg, своего такого кодека
+    # у телефона нет. С этой библиотекой телефон раскодирует голосовые сам, и
+    # сервер-прокладка для них больше не нужен.
+    include(libopus/libopus.pri)
 }
 
 winrt {

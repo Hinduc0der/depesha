@@ -18,6 +18,12 @@ class MessagesModel : public QAbstractListModel
     // cannot be taken back, so it stays the user's decision.
     Q_PROPERTY(bool markAsRead READ markAsRead WRITE setMarkAsRead)
     Q_PROPERTY(int replyToMsgId READ replyToMsgId WRITE setReplyToMsgId NOTIFY replyToMsgIdChanged)
+    // Есть ли у клиента медиа-сервер. От этого зависит, что делать с
+    // анимированными стикерами: с сервером из них получается GIF и он играет
+    // в строке, без сервера показывается готовая миниатюра -- картинка вместо
+    // ничего. Второе включается только при выключенном первом, чтобы не
+    // мешать: миниатюра поверх анимации никому не нужна.
+    Q_PROPERTY(bool mediaServerOn READ mediaServerOn WRITE setMediaServerOn)
 
 private:
     QMutex _mutex;
@@ -42,6 +48,8 @@ private:
     TgLongVariant _uploadId;
 
     bool _markAsRead;
+    bool _voiceUpload;      // загружаемый файл -- голосовое, уйдёт само
+    bool _mediaServerOn;
     qint32 _lastReadId;
     qint32 _replyToMsgId;
     QTime _typingSent;
@@ -101,6 +109,9 @@ public:
     bool markAsRead() const;
     void setMarkAsRead(bool value);
 
+    bool mediaServerOn() const;
+    void setMediaServerOn(bool value);
+
     int replyToMsgId() const;
     void setReplyToMsgId(int messageId);
 
@@ -108,6 +119,10 @@ public:
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const;
 
     TgObject createRow(TgObject message, TgObject sender, TgList users, TgList chats);
+
+    // Отправить голосовое: загрузить .ogg и сразу послать его в переписку.
+    // duration -- длительность в секундах, Telegram показывает её на кнопке.
+    void sendVoice(QString path, int duration);
 
     void handleHistoryResponse(TgObject data, TgLongVariant messageId);
     void handleHistoryResponseUpwards(TgObject data, TgLongVariant messageId);
@@ -120,6 +135,8 @@ signals:
     void scrollForNew();
     void sentMessageUpdate(TgObject update, TgLongVariant messageId);
     void replyToMsgIdChanged();
+    // Голосовое ушло: загрузка кончилась и сообщение отправлено.
+    void voiceSent();
 
 public slots:
     void authorized(TgLongVariant userId);

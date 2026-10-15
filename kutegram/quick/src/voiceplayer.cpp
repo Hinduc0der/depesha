@@ -1,6 +1,7 @@
 #include "voiceplayer.h"
 #include "appsettings.h"
 #include "cachemanager.h"
+#include "opusvoice.h"
 #include "kglog.h"
 
 #include <QFile>
@@ -16,6 +17,9 @@
 VoicePlayer::VoicePlayer(AppSettings *settings, QObject *parent) :
     QObject(parent),
     _reply(0),
+    _decoder(0),
+    _tick(0),
+    _shownPercent(-1),
     _status("idle"),
     _settings(settings),
     _media(0),
@@ -23,19 +27,33 @@ VoicePlayer::VoicePlayer(AppSettings *settings, QObject *parent) :
 {
 }
 
+VoicePlayer::~VoicePlayer()
+{
+    // Недосчитанное надо выбросить руками: в деструкторе декодера стоит
+    // удаление недописанного WAV.
+    delete _decoder;
+    _decoder = 0;
+}
+
 QString VoicePlayer::status() const
 {
     return _status;
 }
 
-void VoicePlayer::setStatus(QString status)
+void VoicePlayer::setStatus(QString status, bool writeToLog)
 {
     if (_status == status) {
         return;
     }
 
     _status = status;
-    kgLog("voice: " + status);
+
+    // Проценты расшифровки в журнал не идут: их десятки, а смысла в них для
+    // разбора никакого -- скорость и так пишется отдельной строкой.
+    if (writeToLog) {
+        kgLog("voice: " + status);
+    }
+
     emit statusChanged();
 }
 
@@ -57,7 +75,10 @@ void VoicePlayer::play(QString path)
     // and less than half the size of an mp3 over EDGE -- and falls back to mp3
     // where its ffmpeg cannot encode AMR, so both are worth looking for.
     if (path.endsWith(".mp3", Qt::CaseInsensitive)
-            || path.endsWith(".amr", Qt::CaseInsensitive)) {
+            || path.endsWith(".amr", Qt::CaseInsensitive)
+            // WAV сюда попадает двумя путями: раскодированное нами голосовое
+            // и запись с микрофона. И то, и другое телефон играет сам.
+            || path.endsWith(".wav", Qt::CaseInsensitive)) {
         playFile(path);
         return;
     }
@@ -72,6 +93,93 @@ void VoicePlayer::play(QString path)
         return;
     }
 
+    const QString wav = CacheManager::convertedPath(path, ".wav");
+    if (QFile::exists(wav)) {
+        playFile(wav);
+        return;
+    }
+
+    // Своими силами. Получится -- сервер не нужен вовсе; не получится --
+    // уйдём на сервер из decodeDone(), и человек этого даже не заметит.
+    //
+    // Работа режется на куски по таймеру: на аппарате она идёт примерно
+    // вчетверо быстрее реального времени, то есть минутное голосовое -- это
+    // секунд четырнадцать, и всё это время телефон должен слушаться рук.
+    kgLog("voice: decoding locally: " + QFileInfo(path).fileName());
+    _pendingPath = path;
+    _wavPath = wav;
+    _shownPercent = -1;
+
+    _decoder = new KgVoiceDecoder();
+    if (!_decoder->begin(path, wav)) {
+        delete _decoder;
+        _decoder = 0;
+        kgLog("voice: cannot start local decoding, asking the server");
+        askServer(path);
+        return;
+    }
+
+    if (!_tick) {
+        _tick = new QTimer(this);
+        // Десять миллисекунд передышки между кусками: за это время очередь
+        // событий успевает разобрать нажатия и перерисовку, а на счёт всё
+        // равно уходит почти всё время.
+        _tick->setInterval(10);
+        connect(_tick, SIGNAL(timeout()), this, SLOT(decodeTick()));
+    }
+    _tick->start();
+
+    setStatus("decoding");
+}
+
+void VoicePlayer::decodeTick()
+{
+    if (!_decoder) {
+        if (_tick) {
+            _tick->stop();
+        }
+        return;
+    }
+
+    // Кусок в 120 мс: меньше -- и накладные расходы таймера начинают
+    // съедать выигрыш, больше -- и нажатия заметно запаздывают.
+    if (_decoder->step(120)) {
+        const int percent = _decoder->percent() / 10 * 10;
+        if (percent != _shownPercent) {
+            _shownPercent = percent;
+            setStatus(QString("decoding %1%").arg(percent), false);
+        }
+        return;
+    }
+
+    _tick->stop();
+
+    const bool ok = _decoder->finish();
+    const int ms = _decoder->msSpent();
+    const QString wav = _wavPath;
+
+    delete _decoder;
+    _decoder = 0;
+
+    decodeDone(ok, ms, wav);
+}
+
+void VoicePlayer::decodeDone(bool ok, int ms, QString wav)
+{
+    if (ok) {
+        kgLog(QString("voice: decoded locally in %1 ms").arg(ms));
+        playFile(wav);
+        return;
+    }
+
+    // Не вышло: битый файл, незнакомый контейнер или просто не Opus.
+    // Сервер остаётся запасным путём -- у кого он есть, тот ничего не теряет.
+    kgLog("voice: local decoding failed, asking the server");
+    askServer(_pendingPath);
+}
+
+void VoicePlayer::askServer(QString path)
+{
     const QString transcoderUrl = _settings ? _settings->activeMediaServerUrl() : QString();
     if (transcoderUrl.isEmpty()) {
         setStatus("media server is off");
@@ -191,6 +299,16 @@ void VoicePlayer::stop()
     if (_reply) {
         _reply->abort();
         _reply = 0;
+    }
+
+    if (_decoder) {
+        // Расшифровка идёт кусками, и бросить её можно между любыми двумя:
+        // недописанный WAV убирает за собой сам декодер.
+        if (_tick) {
+            _tick->stop();
+        }
+        delete _decoder;
+        _decoder = 0;
     }
 
     if (_media) {

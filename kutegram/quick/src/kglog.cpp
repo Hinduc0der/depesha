@@ -1,5 +1,7 @@
 #include "kglog.h"
 
+#include "tgclient.h"
+
 #include <QDir>
 #include <QFile>
 #include <QMutex>
@@ -29,8 +31,12 @@ QString kgLogPath()
     // the system is out of memory is a bad way to investigate being out of
     // memory. The file is tens of kilobytes; copy it to the card with a file
     // manager when it needs to leave the phone.
-    QDir("C:/Data").mkpath("Kutegram");
-    return "C:/Data/Kutegram/kutegram.log";
+    // Своя папка на клиента: Депеша и Kutegram стоят на телефоне вместе, и
+    // один журнал на двоих читать было нельзя -- строки шли вперемешку, а
+    // чьи они, в них не написано.
+    const QString app = TgClient::appFolder();
+    QDir("C:/Data").mkpath(app);
+    return "C:/Data/" + app + "/" + app.toLower() + ".log";
 #else
     return QDir::tempPath() + "/kutegram.log";
 #endif

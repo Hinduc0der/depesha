@@ -1,6 +1,6 @@
 TARGET = Depesha
 APPNAME = Depesha
-VERSION = 0.3.7
+VERSION = 0.5.3
 PKG_VERSION = $$replace(VERSION, "\.", ",")
 
 symbian {
@@ -63,6 +63,9 @@ SOURCES += \
     $$KUTEGRAM/src/cachemanager.cpp \
     $$KUTEGRAM/src/mediaconverter.cpp \
     $$KUTEGRAM/src/voiceplayer.cpp \
+    $$KUTEGRAM/src/opusvoice.cpp \
+    $$KUTEGRAM/src/voicerecorder.cpp \
+    $$KUTEGRAM/src/opusencode.cpp \
     $$KUTEGRAM/src/kglog.cpp
 
 HEADERS += \
@@ -86,7 +89,14 @@ HEADERS += \
     $$KUTEGRAM/src/cachemanager.h \
     $$KUTEGRAM/src/mediaconverter.h \
     $$KUTEGRAM/src/voiceplayer.h \
+    $$KUTEGRAM/src/opusvoice.h \
+    $$KUTEGRAM/src/voicerecorder.h \
+    $$KUTEGRAM/src/opusencode.h \
     $$KUTEGRAM/src/kglog.h
+
+# Декодер Opus: голосовые Telegram -- Opus в Ogg, своего такого кодека у
+# телефона нет. С этой библиотекой голосовые играются без сервера-прокладки.
+include($$KUTEGRAM/libopus/libopus.pri)
 
 # Декодер WebP: обычный стикер Telegram -- это WebP, а Qt 4.7 его не читает.
 include($$PWD/libwebp.pri)
@@ -96,7 +106,10 @@ include($$KUTEGRAM/libkg/libkg.pri)
 symbian {
     # hal: свободная память системы для журнала; hwrmvibraclient: вибрация
     # на новое сообщение. Остальное -- запуск приложений и уведомления.
-    LIBS += -lavkon -lapgrfx -lcone -leikcore -lapmime -lhwrmvibraclient -lhal
+    # mediaclientaudioinputstream -- запись с микрофона сырым потоком.
+    # Взята вместо mediaclientaudio (штатный диктофон) ради номеров функций:
+    # здесь нужны 3-15 из 28, там были бы 87-112 -- см. voicerecorder.h.
+    LIBS += -lavkon -lapgrfx -lcone -leikcore -lapmime -lhwrmvibraclient -lhal -lmediaclientaudioinputstream
 
     ICON = depesha.svg
 

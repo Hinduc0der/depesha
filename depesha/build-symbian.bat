@@ -35,6 +35,13 @@ if errorlevel 8 exit /b 1
 robocopy "%DP_ROOT%\depesha" "%DP_WORK%\depesha" /MIR /NFL /NDL /NJH /NJS /NP /XD .git >nul
 if errorlevel 8 exit /b 1
 
+REM Версия вкомпилирована макросом (VERSION из .pro -> KG_STR в main.cpp), а
+REM make сравнивает только время файлов и про изменившийся макрос не знает.
+REM main.cpp не менялся месяцами, его объектник оставался от старой сборки --
+REM и пакет 0.3.9 честно представлялся «Depesha 0.3.4». Единственный файл,
+REM который эту версию печатает, помечаем изменённым, чтобы он пересобрался.
+copy /b "%DP_WORK%\depesha\src\main.cpp"+,, "%DP_WORK%\depesha\src\main.cpp" >nul
+
 cd /d "%DP_WORK%\depesha"
 if errorlevel 1 exit /b 1
 

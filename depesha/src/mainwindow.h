@@ -31,6 +31,9 @@ class QStatusBar;
 // собран из штатных виджетов Qt со стилем телефона, а не нарисован самим
 // приложением на QML. На 332 МГц это и есть разница между "листается" и "не
 // листается".
+class KgVoiceRecorder;
+class KgVoiceEncoder;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -81,8 +84,20 @@ private slots:
     // Слот, потому что состояние сообщает и страница переписки.
     void status(const QString &text);
 
+    // Проба записи с микрофона: первый вызов начинает, второй останавливает.
+    void recordVoice();
+    void stopRecording();
+    void cancelRecording();
+    void recordingTick();
+    void recordingStarted();
+    void recordingFinished(QString path, int seconds, int bytes);
+    void recordingFailed(QString why);
+    void encodeTick();
+    void voiceSent();
+
 private:
     void showPage(QWidget *page);
+    void recordingOver();
 
     TgClient *_client;
     AvatarDownloader *_avatars;
@@ -113,6 +128,15 @@ private:
     QAction *_silentAction;
     QAction *_laterHourAction;
     QAction *_laterDayAction;
+    QAction *_recordAction;
+    QAction *_stopRecordAction;
+    QAction *_cancelRecordAction;
+    KgVoiceRecorder *_recorder;
+    QTimer *_recordClock;
+    bool _cancelled;
+    KgVoiceEncoder *_encoder;
+    QTimer *_encodeClock;
+    QString _oggPath;
     QMenu *_foldersMenu;
     QString _phone;
     QString _phoneCodeHash;

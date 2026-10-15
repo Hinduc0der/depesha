@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QDomDocument>
 #include "avatardownloader.h"
+#include "cachemanager.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -36,6 +37,8 @@ MessagesModel::MessagesModel(QObject *parent)
     , _downOffset(0)
     , _avatarDownloader(0)
     , _markAsRead(true)
+    , _voiceUpload(false)
+    , _mediaServerOn(false)
     , _lastReadId(0)
     , _replyToMsgId(0)
     , _typingActive(false)
@@ -473,6 +476,63 @@ static QString durationString(qint32 seconds)
     return result;
 }
 
+// Сколько байт качать у выбранной миниатюры. У photoSizeProgressive своего
+// размера нет -- вместо него список размеров по уровням качества, и нужен
+// последний, самый полный.
+static qint64 kgThumbBytes(TgObject thumb)
+{
+    qint64 bytes = thumb["size"].toLongLong();
+    if (bytes != 0) {
+        return bytes;
+    }
+
+    TgList steps = thumb["sizes"].toList();
+    return steps.isEmpty() ? 0 : steps.last().toLongLong();
+}
+
+// Миниатюра анимированного стикера. Их у документа обычно несколько:
+//
+//   * photoStrippedSize -- несколько сотен байт прямо в сообщении, без
+//     заголовка JPEG (его достраивает getJpegPayload) -- качать нечего;
+//   * photoCachedSize -- готовый JPEG, тоже прямо в сообщении;
+//   * photoSize/photoSizeProgressive -- картинка на сервере, десяток
+//     килобайт, за ней нужен отдельный запрос;
+//   * photoPathSize -- векторный контур, рисовать его нечем.
+//
+// Из «настоящих» берётся самая маленькая: в строке она всё равно не больше
+// девяноста шести точек.
+static TgObject kgStickerThumb(TgObject document, QByteArray &inlineBytes)
+{
+    TgList thumbs = document["thumbs"].toList();
+    TgObject best;
+
+    for (qint32 i = 0; i < thumbs.size(); ++i) {
+        TgObject thumb = thumbs[i].toMap();
+
+        switch (GETID(thumb)) {
+        case TLType::PhotoStrippedSize:
+            if (inlineBytes.isEmpty()) {
+                inlineBytes = TgClient::getJpegPayload(thumb["bytes"].toByteArray());
+            }
+            break;
+        case TLType::PhotoCachedSize:
+            // Целый JPEG, достраивать нечего -- он лучше обрезанного.
+            inlineBytes = thumb["bytes"].toByteArray();
+            break;
+        case TLType::PhotoSize:
+        case TLType::PhotoSizeProgressive:
+            if (ID(best) == 0 || thumb["w"].toInt() < best["w"].toInt()) {
+                best = thumb;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    return best;
+}
+
 // Enough of the types Telegram actually sends. The fallback takes the subtype
 // as it is, which covers ogg, webp, webm and anything else that is already a
 // plain word.
@@ -675,11 +735,19 @@ TgObject MessagesModel::createRow(TgObject message, TgObject sender, TgList user
 
         QString mimeType = document["mime_type"].toString();
 
+        // Анимированный стикер: Lottie (.tgs) или VP9 (.webm). Ни того, ни
+        // другого телефон не рисует.
+        const bool animatedSticker = isSticker
+                && (mimeType == "application/x-tgsticker" || mimeType == "video/webm");
+
         // Everything here is video that no codec in this phone can decode, and
         // all of it is short. Converted to an animated GIF by the media server
         // it becomes something Qt draws by itself, in the message list.
+        //
+        // Без сервера обещать анимацию нечестно: вместо неё ниже появится
+        // миниатюра, а она картинка, а не анимация.
         if (isRound || isAnimated || (isSticker && mimeType == "video/webm")) {
-            row["hasAnimation"] = true;
+            row["hasAnimation"] = _mediaServerOn || !animatedSticker;
         }
 
         QString title;
@@ -704,6 +772,33 @@ TgObject MessagesModel::createRow(TgObject message, TgObject sender, TgList user
                 row["hasSticker"] = true;
                 row["stickerId"] = document["id"];
                 row["_stickerToDownload"] = document;
+            } else if (animatedSticker && !_mediaServerOn) {
+                // Анимацию без сервера не сделать, но у каждого стикера
+                // Telegram есть готовая миниатюра -- обычная картинка. Пусть
+                // лучше будет видно, что именно прислали, чем строка
+                // «Sticker» и ничего.
+                //
+                // С сервером этого не делаем: там из стикера получается GIF,
+                // и подкладывать под него картинку незачем.
+                QByteArray inlineThumb;
+                TgObject thumb = kgStickerThumb(document, inlineThumb);
+
+                if (!inlineThumb.isEmpty()) {
+                    // Это уже пришло вместе с сообщением -- видно сразу,
+                    // ничего не качая.
+                    row["photoPreview"] = inlineThumb;
+                    row["hasSticker"] = true;
+                }
+
+                if (ID(thumb) != 0) {
+                    TgObject withThumb = document;
+                    withThumb["_thumbType"] = thumb["type"];
+                    withThumb["_thumbSize"] = kgThumbBytes(thumb);
+
+                    row["hasSticker"] = true;
+                    row["stickerId"] = document["id"];
+                    row["_stickerToDownload"] = withThumb;
+                }
             }
 #endif
         } else if (isAnimated) {
@@ -971,6 +1066,19 @@ void MessagesModel::setMarkAsRead(bool value)
     }
 }
 
+bool MessagesModel::mediaServerOn() const
+{
+    return _mediaServerOn;
+}
+
+void MessagesModel::setMediaServerOn(bool value)
+{
+    // Учитывается при сборке строки, значит на уже показанную переписку не
+    // влияет. Это осознанно: перестраивать историю из-за настройки, которую
+    // меняют раз в жизни, дороже, чем открыть чат заново.
+    _mediaServerOn = value;
+}
+
 int MessagesModel::replyToMsgId() const
 {
     return _replyToMsgId;
@@ -1182,8 +1290,6 @@ void MessagesModel::downloadFile(qint32 index)
 
     cancelDownload(index);
 
-    QDir::home().mkdir("Kutegram");
-
     QString fileName = _history[index]["mediaFileName"].toString();
     if (fileName.isEmpty()) fileName = QString::number(QDateTime::currentDateTime().toMSecsSinceEpoch());
 
@@ -1202,21 +1308,20 @@ void MessagesModel::downloadFile(qint32 index)
         fileNameAfter = "." + fileNameAfter;
     }
 
-#if QT_VERSION < 0x050000
-    QDir dir(QDir::homePath() + "/Downloads/");
-#else
-    QDir dir(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
-#endif
-    dir.mkpath("Kutegram/");
+    // The downloads folder follows the same choice as the cache: on a phone
+    // with a card, this is the single biggest thing worth moving off internal
+    // memory, because nothing ever deletes from here. Every attachment the
+    // user opens lands in it, and names are numbered rather than reused.
+    QDir dir = CacheManager::downloadDirectory();
 
     QString indexedFileName = fileName;
-    QString indexedFilePath = dir.absoluteFilePath("Kutegram/" + indexedFileName);
+    QString indexedFilePath = dir.absoluteFilePath(indexedFileName);
     qint32 fileIndex = 0;
 
     while (QFile(indexedFilePath).exists()) {
         ++fileIndex;
         indexedFileName = fileNameBefore + " (" + QString::number(fileIndex) + ")" + fileNameAfter;
-        indexedFilePath = dir.absoluteFilePath("Kutegram/" + indexedFileName);
+        indexedFilePath = dir.absoluteFilePath(indexedFileName);
     }
 
     qint32 messageId = _history[index]["messageId"].toInt();
@@ -1612,6 +1717,46 @@ void MessagesModel::uploadFilePath(QString path)
     emit uploadingProgress(0);
 }
 
+void MessagesModel::sendVoice(QString path, int duration)
+{
+    cancelUpload();
+
+    QFileInfo info(path);
+    if (!info.exists() || info.size() <= 0) {
+        kgLog("voice upload refused: " + path);
+        return;
+    }
+
+    // Голосовое отличается от обычного вложения одним атрибутом: voice=true.
+    // По нему Telegram и рисует волну с кнопкой «играть», а не строку файла.
+    // Волну (waveform) не шлём -- клиенты рисуют тогда ровную линию, а считать
+    // её на этом телефоне незачем.
+    ID_PROPERTY(_media) = TLType::InputMediaUploadedDocument;
+    _media["mime_type"] = "audio/ogg";
+
+    TGOBJECT(TLType::DocumentAttributeAudio, audio);
+    audio["voice"] = true;
+    audio["duration"] = duration;
+
+    TgList attributes;
+    attributes << audio;
+    _media["attributes"] = attributes;
+
+    kgLog("sending voice " + info.fileName() + ", " + QString::number(info.size())
+          + " bytes, " + QString::number(duration) + " s");
+
+    _voiceUpload = true;
+    _uploadId = _client->uploadFile(path);
+
+    if (_uploadId.toLongLong() == 0) {
+        kgLog("voice upload did not start");
+        _voiceUpload = false;
+        return;
+    }
+
+    emit uploadingProgress(0);
+}
+
 void MessagesModel::uploadFile()
 {
     cancelUpload();
@@ -1693,6 +1838,13 @@ void MessagesModel::fileUploaded(TgLongVariant fileId, TgObject inputFile)
     _media["file"] = inputFile;
 
     emit uploadingProgress(100);
+
+    // Голосовое уходит само: текста к нему нет, и ждать от человека нечего.
+    if (_voiceUpload) {
+        _voiceUpload = false;
+        sendMessageWith(QString(), false, 0);
+        emit voiceSent();
+    }
 }
 
 void MessagesModel::fileUploading(TgLongVariant fileId, TgLongVariant processedLength, TgLongVariant totalLength, qint32 progressPercentage)

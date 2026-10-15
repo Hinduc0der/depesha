@@ -87,6 +87,15 @@ TgClient::TgClient(QObject *parent, qint32 dcId, QString sessionName)
     _transport = new TgTransport(this, clientSessionName, dcId);
 }
 
+QString TgClient::appFolder()
+{
+    const QString name = QCoreApplication::applicationName();
+
+    // Пусто бывает только если имя ещё не задано (очень ранний вызов). Падать
+    // из-за этого незачем, а прежнее общее имя -- разумный запасной вариант.
+    return name.isEmpty() ? QString("Kutegram") : name;
+}
+
 QString TgClient::settingsFilePath(QString name)
 {
     QString fileName = QCoreApplication::applicationName() + "_" + name;
@@ -97,12 +106,63 @@ QString TgClient::settingsFilePath(QString name)
     // first, and that wipes c:\private\<UID> along with everything the
     // application wrote there. The session lived in it, so every single update
     // logged the user out. C:\Data needs no capability and survives.
-    return "C:/Data/Kutegram/" + fileName + ".ini";
+    //
+    // Папка -- по имени клиента. До 15.10.2026 оба клиента жили в
+    // C:/Data/Kutegram, и файлы различались только приставкой в имени;
+    // см. migrateSettingsFolder().
+    QDir("C:/Data").mkpath(appFolder());
+    return "C:/Data/" + appFolder() + "/" + fileName + ".ini";
 #else
     return QDir::cleanPath(QSettings(QSettings::IniFormat,
                                      QSettings::UserScope,
                                      QCoreApplication::organizationName(),
                                      fileName).fileName());
+#endif
+}
+
+int TgClient::migrateSettingsFolder()
+{
+#ifdef Q_OS_SYMBIAN
+    const QString app = appFolder();
+    const QString staraya = "C:/Data/Kutegram";
+    const QString novaya = "C:/Data/" + app;
+
+    if (novaya == staraya) {
+        return 0;   // Kutegram: он и так дома
+    }
+
+    QDir otkuda(staraya);
+    if (!otkuda.exists()) {
+        return 0;
+    }
+
+    QDir("C:/Data").mkpath(app);
+
+    // Берём только свои файлы: они всегда начинались с имени клиента, потому
+    // что в общей папке иначе было бы не разобрать, чьё что.
+    QStringList maski;
+    maski << app + "_*.ini";
+
+    const QStringList svoi = otkuda.entryList(maski, QDir::Files);
+    int perevezeno = 0;
+
+    for (int i = 0; i < svoi.size(); ++i) {
+        const QString tuda = novaya + "/" + svoi[i];
+
+        // Если в новой папке файл уже есть, старый не трогаем: свежее тут
+        // новое, а сессию терять нельзя ни при каких обстоятельствах.
+        if (QFile::exists(tuda)) {
+            continue;
+        }
+
+        if (QFile::rename(otkuda.absoluteFilePath(svoi[i]), tuda)) {
+            ++perevezeno;
+        }
+    }
+
+    return perevezeno;
+#else
+    return 0;
 #endif
 }
 
